@@ -55,6 +55,7 @@ class Renderer {
     var anchorDepthState: MTLDepthStencilState!
     var capturedImageTextureY: CVMetalTexture?
     var capturedImageTextureCbCr: CVMetalTexture?
+    var capturedImageTextureDepth: CVMetalTexture?
     
     // Captured image texture cache
     var capturedImageTextureCache: CVMetalTextureCache!
@@ -122,7 +123,7 @@ class Renderer {
             //   we use from the CVMetalTextures are not valid unless their parent CVMetalTextures
             //   are retained. Since we may release our CVMetalTexture ivars during the rendering
             //   cycle, we must retain them separately here.
-            var textures = [capturedImageTextureY, capturedImageTextureCbCr]
+            var textures = [capturedImageTextureY, capturedImageTextureCbCr, capturedImageTextureDepth]
             commandBuffer.addCompletedHandler{ [weak self] commandBuffer in
                 if let strongSelf = self {
                     strongSelf.inFlightSemaphore.signal()
@@ -137,8 +138,8 @@ class Renderer {
                 
                 renderEncoder.label = "MyRenderEncoder"
                 
-                drawCapturedImage(renderEncoder: renderEncoder)
                 drawAnchorGeometry(renderEncoder: renderEncoder)
+                drawCapturedImage(renderEncoder: renderEncoder)
                 
                 // We're done encoding commands
                 renderEncoder.endEncoding()
@@ -311,8 +312,19 @@ class Renderer {
         (vertexDescriptor.attributes[Int(kVertexAttributeTexcoord.rawValue)] as! MDLVertexAttribute).name = MDLVertexAttributeTextureCoordinate
         (vertexDescriptor.attributes[Int(kVertexAttributeNormal.rawValue)] as! MDLVertexAttribute).name   = MDLVertexAttributeNormal
         
+        // Load the .OBJ file
+        guard let url = Bundle.main.url(forResource: "Square", withExtension: "obj") else {
+            fatalError("Failed to find model file.")
+        }
+        
+        let asset = MDLAsset(url: url, vertexDescriptor: vertexDescriptor, bufferAllocator: metalAllocator)
+        guard let object = asset.object(at: 0) as? MDLMesh else {
+            fatalError("Failed to get mesh from asset.")
+        }
+        
         // Use ModelIO to create a box mesh as our object
-        let mesh = MDLMesh(boxWithExtent: vector3(0.075, 0.075, 0.075), segments: vector3(1, 1, 1), inwardNormals: false, geometryType: .triangles, allocator: metalAllocator)
+        //let mesh = MDLMesh(boxWithExtent: vector3(0.075, 0.075, 0.075), segments: vector3(1, 1, 1), inwardNormals: false, geometryType: .triangles, allocator: metalAllocator)
+        let mesh = object //MDLMesh(sphereWithExtent: vector3(0.075, 0.075, 0.075), segments: vector2(10, 10), inwardNormals: false, geometryType: .triangles, allocator: metalAllocator)
         
         // Perform the format/relayout of mesh vertices by setting the new vertex descriptor in our
         //   Model IO mesh
@@ -401,7 +413,20 @@ class Renderer {
             var coordinateSpaceTransform = matrix_identity_float4x4
             coordinateSpaceTransform.columns.2.z = -1.0
             
-            let modelMatrix = simd_mul(anchor.transform, coordinateSpaceTransform)
+            // 0th index is the face. Use the z distance for the backdrop
+            if index == 0 {
+                
+                let behindDist : Float = 0.5
+                
+                // Calculate the eye-depth of the anchor
+                let uniforms = sharedUniformBufferAddress.assumingMemoryBound(to: SharedUniforms.self)
+                let viewMatrix = frame.camera.viewMatrix(for: .landscapeRight)
+                let modelMatrix = anchor.transform
+                let modelViewMatrix = viewMatrix * modelMatrix
+                uniforms.pointee.cutoffDistance = -modelViewMatrix[3, 2] + behindDist
+            }
+            //let modelMatrix = simd_mul(anchor.transform, coordinateSpaceTransform)
+            let modelMatrix = simd_mul(matrix_identity_float4x4, coordinateSpaceTransform)
             
             let anchorUniforms = anchorUniformBufferAddress.assumingMemoryBound(to: InstanceUniforms.self).advanced(by: index)
             anchorUniforms.pointee.modelMatrix = modelMatrix
@@ -411,13 +436,20 @@ class Renderer {
     func updateCapturedImageTextures(frame: ARFrame) {
         // Create two textures (Y and CbCr) from the provided frame's captured image
         let pixelBuffer = frame.capturedImage
+        let depthData = frame.capturedDepthData
         
         if (CVPixelBufferGetPlaneCount(pixelBuffer) < 2) {
             return
         }
         
-        capturedImageTextureY = createTexture(fromPixelBuffer: pixelBuffer, pixelFormat:.r8Unorm, planeIndex:0)
-        capturedImageTextureCbCr = createTexture(fromPixelBuffer: pixelBuffer, pixelFormat:.rg8Unorm, planeIndex:1)
+        if depthData != nil {
+            let depthBuffer = depthData!.depthDataMap
+            capturedImageTextureDepth = createTexture(fromPixelBuffer: depthBuffer, pixelFormat: .r32Float, planeIndex: 0)
+            capturedImageTextureY = createTexture(fromPixelBuffer: pixelBuffer, pixelFormat:.r8Unorm, planeIndex:0)
+            capturedImageTextureCbCr = createTexture(fromPixelBuffer: pixelBuffer, pixelFormat:.rg8Unorm, planeIndex:1)
+        }
+        
+        
     }
     
     func createTexture(fromPixelBuffer pixelBuffer: CVPixelBuffer, pixelFormat: MTLPixelFormat, planeIndex: Int) -> CVMetalTexture? {
@@ -449,7 +481,7 @@ class Renderer {
     }
     
     func drawCapturedImage(renderEncoder: MTLRenderCommandEncoder) {
-        guard let textureY = capturedImageTextureY, let textureCbCr = capturedImageTextureCbCr else {
+        guard let textureY = capturedImageTextureY, let textureCbCr = capturedImageTextureCbCr, let textureDepth = capturedImageTextureDepth else {
             return
         }
         
@@ -467,6 +499,8 @@ class Renderer {
         // Set any textures read/sampled from our render pipeline
         renderEncoder.setFragmentTexture(CVMetalTextureGetTexture(textureY), index: Int(kTextureIndexY.rawValue))
         renderEncoder.setFragmentTexture(CVMetalTextureGetTexture(textureCbCr), index: Int(kTextureIndexCbCr.rawValue))
+        renderEncoder.setFragmentTexture(CVMetalTextureGetTexture(textureDepth), index: Int(kTextureIndexDepth.rawValue))
+        renderEncoder.setFragmentBuffer(sharedUniformBuffer, offset: sharedUniformBufferOffset, index: Int(kBufferIndexSharedUniforms.rawValue))
         
         // Draw each submesh of our mesh
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
@@ -484,6 +518,7 @@ class Renderer {
         
         // Set render command encoder state
         renderEncoder.setCullMode(.back)
+        //renderEncoder.setTriangleFillMode(.lines)
         renderEncoder.setRenderPipelineState(anchorPipelineState)
         renderEncoder.setDepthStencilState(anchorDepthState)
         
@@ -503,6 +538,7 @@ class Renderer {
             renderEncoder.drawIndexedPrimitives(type: submesh.primitiveType, indexCount: submesh.indexCount, indexType: submesh.indexType, indexBuffer: submesh.indexBuffer.buffer, indexBufferOffset: submesh.indexBuffer.offset, instanceCount: anchorInstanceCount)
         }
         
+        //renderEncoder.setTriangleFillMode(.fill)
         renderEncoder.popDebugGroup()
     }
 }

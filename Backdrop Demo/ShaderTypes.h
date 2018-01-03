@@ -37,7 +37,8 @@ typedef enum VertexAttributes {
 typedef enum TextureIndices {
     kTextureIndexColor    = 0,
     kTextureIndexY        = 1,
-    kTextureIndexCbCr     = 2
+    kTextureIndexCbCr     = 2,
+    kTextureIndexDepth    = 3,
 } TextureIndices;
 
 // Structure shared between shader and C code to ensure the layout of shared uniform data accessed in
@@ -52,6 +53,7 @@ typedef struct {
     vector_float3 directionalLightDirection;
     vector_float3 directionalLightColor;
     float materialShininess;
+    float cutoffDistance;
 } SharedUniforms;
 
 // Structure shared between shader and C code to ensure the layout of instance uniform data accessed in

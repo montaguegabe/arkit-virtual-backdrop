@@ -14,6 +14,7 @@
 		95037FE61FFB00FA0047B771 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 95037FE41FFB00FA0047B771 /* Main.storyboard */; };
 		95037FE81FFB00FA0047B771 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 95037FE71FFB00FA0047B771 /* Assets.xcassets */; };
 		95037FEB1FFB00FA0047B771 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 95037FE91FFB00FA0047B771 /* LaunchScreen.storyboard */; };
+		95E00AD71FFC70DB00AAA8FE /* Square.obj in Resources */ = {isa = PBXBuildFile; fileRef = 95E00AD61FFC70DB00AAA8FE /* Square.obj */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,10 @@
 		95037FEA1FFB00FA0047B771 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		95037FEC1FFB00FA0047B771 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		95037FED1FFB00FA0047B771 /* Backdrop_Demo-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Backdrop_Demo-Bridging-Header.h"; sourceTree = "<group>"; };
+		95E00AA21FFBFF6300AAA8FE /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		95E00AA41FFBFF6900AAA8FE /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		95E00AA61FFBFF7300AAA8FE /* MetalPerformanceShaders.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalPerformanceShaders.framework; path = System/Library/Frameworks/MetalPerformanceShaders.framework; sourceTree = SDKROOT; };
+		95E00AD61FFC70DB00AAA8FE /* Square.obj */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = Square.obj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,6 +51,7 @@
 			children = (
 				95037FDA1FFB00FA0047B771 /* Backdrop Demo */,
 				95037FD91FFB00FA0047B771 /* Products */,
+				95E00AA11FFBFF6300AAA8FE /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -63,6 +69,7 @@
 				95037FDB1FFB00FA0047B771 /* AppDelegate.swift */,
 				95037FDD1FFB00FA0047B771 /* Shaders.metal */,
 				95037FDF1FFB00FA0047B771 /* ShaderTypes.h */,
+				95E00AD61FFC70DB00AAA8FE /* Square.obj */,
 				95037FE01FFB00FA0047B771 /* Renderer.swift */,
 				95037FE21FFB00FA0047B771 /* ViewController.swift */,
 				95037FE41FFB00FA0047B771 /* Main.storyboard */,
@@ -72,6 +79,16 @@
 				95037FED1FFB00FA0047B771 /* Backdrop_Demo-Bridging-Header.h */,
 			);
 			path = "Backdrop Demo";
+			sourceTree = "<group>";
+		};
+		95E00AA11FFBFF6300AAA8FE /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				95E00AA61FFBFF7300AAA8FE /* MetalPerformanceShaders.framework */,
+				95E00AA41FFBFF6900AAA8FE /* MetalKit.framework */,
+				95E00AA21FFBFF6300AAA8FE /* Metal.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -134,6 +151,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				95037FEB1FFB00FA0047B771 /* LaunchScreen.storyboard in Resources */,
+				95E00AD71FFC70DB00AAA8FE /* Square.obj in Resources */,
 				95037FE81FFB00FA0047B771 /* Assets.xcassets in Resources */,
 				95037FE61FFB00FA0047B771 /* Main.storyboard in Resources */,
 			);
@@ -287,7 +305,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = E6GA9X89TN;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = "Backdrop Demo/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.Montague.Backdrop-Demo";
@@ -303,7 +321,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = E6GA9X89TN;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = "Backdrop Demo/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.Montague.Backdrop-Demo";

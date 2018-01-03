@@ -42,7 +42,9 @@ vertex ImageColorInOut capturedImageVertexTransform(ImageVertex in [[stage_in]])
 // Captured image fragment function
 fragment float4 capturedImageFragmentShader(ImageColorInOut in [[stage_in]],
                                             texture2d<float, access::sample> capturedImageTextureY [[ texture(kTextureIndexY) ]],
-                                            texture2d<float, access::sample> capturedImageTextureCbCr [[ texture(kTextureIndexCbCr) ]]) {
+                                            texture2d<float, access::sample> capturedImageTextureCbCr [[ texture(kTextureIndexCbCr) ]],
+                                            texture2d<float, access::sample> capturedImageTextureDepth [[ texture(kTextureIndexDepth) ]],
+                                            constant SharedUniforms &uniforms [[ buffer(kBufferIndexSharedUniforms) ]]) {
     
     constexpr sampler colorSampler(mip_filter::linear,
                                    mag_filter::linear,
@@ -56,11 +58,15 @@ fragment float4 capturedImageFragmentShader(ImageColorInOut in [[stage_in]],
     );
     
     // Sample Y and CbCr textures to get the YCbCr color at the given texture coordinate
-    float4 ycbcr = float4(capturedImageTextureY.sample(colorSampler, in.texCoord).r,
-                          capturedImageTextureCbCr.sample(colorSampler, in.texCoord).rg, 1.0);
+    float4 ycbcr = float4(capturedImageTextureY.sample(colorSampler, in.texCoord).r, capturedImageTextureCbCr.sample(colorSampler, in.texCoord).rg, 1.0);
+    float depth = capturedImageTextureDepth.sample(colorSampler, in.texCoord).r;
     
     // Return converted RGB color
-    return ycbcrToRGBTransform * ycbcr;
+    if (depth < uniforms.cutoffDistance) {
+        return ycbcrToRGBTransform * ycbcr;
+    } else {
+        discard_fragment();
+    }
 }
 
 
@@ -83,8 +89,8 @@ typedef struct {
 vertex ColorInOut anchorGeometryVertexTransform(Vertex in [[stage_in]],
                                                 constant SharedUniforms &sharedUniforms [[ buffer(kBufferIndexSharedUniforms) ]],
                                                 constant InstanceUniforms *instanceUniforms [[ buffer(kBufferIndexInstanceUniforms) ]],
-                                                ushort vid [[vertex_id]],
-                                                ushort iid [[instance_id]]) {
+                                                uint vid [[vertex_id]],
+                                                uint iid [[instance_id]]) {
     ColorInOut out;
     
     // Make position a float4 to perform 4x4 matrix math on it
@@ -97,7 +103,7 @@ vertex ColorInOut anchorGeometryVertexTransform(Vertex in [[stage_in]],
     out.position = sharedUniforms.projectionMatrix * modelViewMatrix * position;
     
     // Color each face a different color
-    ushort colorID = vid / 4 % 6;
+    int colorID = vid / 4 % 6;
     out.color = colorID == 0 ? float4(0.0, 1.0, 0.0, 1.0) // Right face
               : colorID == 1 ? float4(1.0, 0.0, 0.0, 1.0) // Left face
               : colorID == 2 ? float4(0.0, 0.0, 1.0, 1.0) // Top face
