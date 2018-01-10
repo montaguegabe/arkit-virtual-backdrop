@@ -43,6 +43,7 @@ class Renderer {
     let device: MTLDevice
     let inFlightSemaphore = DispatchSemaphore(value: kMaxBuffersInFlight)
     var renderDestination: RenderDestinationProvider
+    var shouldRender : Bool = true
     
     // Metal objects
     var commandQueue: MTLCommandQueue!
@@ -56,6 +57,7 @@ class Renderer {
     var capturedImageTextureY: CVMetalTexture?
     var capturedImageTextureCbCr: CVMetalTexture?
     var capturedImageTextureDepth: CVMetalTexture?
+    var anchorTexture: MTLTexture?
     
     // Captured image texture cache
     var capturedImageTextureCache: CVMetalTextureCache!
@@ -132,7 +134,10 @@ class Renderer {
             }
             
             updateBufferStates()
-            updateGameState()
+            let shouldUpdate = updateGameState()
+            if !shouldUpdate {
+                return
+            }
             
             if let renderPassDescriptor = renderDestination.currentRenderPassDescriptor, let currentDrawable = renderDestination.currentDrawable, let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
                 
@@ -299,11 +304,25 @@ class Renderer {
     func loadAssets() {
         // Create and load our assets into Metal objects including meshes and textures
         
+        // Load texture for the model
+        let loader = MTKTextureLoader(device: device)
+        guard let texUrl = Bundle.main.url(forResource: "GameTex", withExtension: "png") else {
+            fatalError("Failed to find model file.")
+        }
+
+        do {
+            var modelTex : MTLTexture
+            try modelTex = loader.newTexture(URL: texUrl, options: [.origin: MTKTextureLoader.Origin.flippedVertically, .SRGB: false])
+            anchorTexture = modelTex
+        } catch let error {
+            print(error)
+        }
+        
         // Create a MetalKit mesh buffer allocator so that ModelIO will load mesh data directly into
         //   Metal buffers accessible by the GPU
         let metalAllocator = MTKMeshBufferAllocator(device: device)
         
-        // Creata a Model IO vertexDescriptor so that we format/layout our model IO mesh vertices to
+        // Create a Model IO vertexDescriptor so that we format/layout our model IO mesh vertices to
         //   fit our Metal render pipeline's vertex descriptor layout
         let vertexDescriptor = MTKModelIOVertexDescriptorFromMetal(geometryVertexDescriptor)
         
@@ -313,7 +332,7 @@ class Renderer {
         (vertexDescriptor.attributes[Int(kVertexAttributeNormal.rawValue)] as! MDLVertexAttribute).name   = MDLVertexAttributeNormal
         
         // Load the .OBJ file
-        guard let url = Bundle.main.url(forResource: "Square", withExtension: "obj") else {
+        guard let url = Bundle.main.url(forResource: "Game", withExtension: "obj") else {
             fatalError("Failed to find model file.")
         }
         
@@ -323,7 +342,7 @@ class Renderer {
         }
         
         // Use ModelIO to create a box mesh as our object
-        //let mesh = MDLMesh(boxWithExtent: vector3(0.075, 0.075, 0.075), segments: vector3(1, 1, 1), inwardNormals: false, geometryType: .triangles, allocator: metalAllocator)
+        //let mesh = MDLMesh(boxWithExtent: vector3(1, 1, 1), segments: vector3(1, 1, 1), inwardNormals: false, geometryType: .triangles, allocator: metalAllocator)
         let mesh = object //MDLMesh(sphereWithExtent: vector3(0.075, 0.075, 0.075), segments: vector2(10, 10), inwardNormals: false, geometryType: .triangles, allocator: metalAllocator)
         
         // Perform the format/relayout of mesh vertices by setting the new vertex descriptor in our
@@ -351,11 +370,11 @@ class Renderer {
         anchorUniformBufferAddress = anchorUniformBuffer.contents().advanced(by: anchorUniformBufferOffset)
     }
     
-    func updateGameState() {
+    func updateGameState() -> Bool {
         // Update any game state
         
         guard let currentFrame = session.currentFrame else {
-            return
+            return false
         }
         
         updateSharedUniforms(frame: currentFrame)
@@ -367,6 +386,8 @@ class Renderer {
             
             updateImagePlane(frame: currentFrame)
         }
+        
+        return currentFrame.capturedDepthData != nil
     }
     
     func updateSharedUniforms(frame: ARFrame) {
@@ -375,7 +396,7 @@ class Renderer {
         let uniforms = sharedUniformBufferAddress.assumingMemoryBound(to: SharedUniforms.self)
         
         uniforms.pointee.viewMatrix = frame.camera.viewMatrix(for: .landscapeRight)
-        uniforms.pointee.projectionMatrix = frame.camera.projectionMatrix(for: .landscapeRight, viewportSize: viewportSize, zNear: 0.001, zFar: 1000)
+        uniforms.pointee.projectionMatrix = frame.camera.projectionMatrix(for: .landscapeRight, viewportSize: viewportSize, zNear: 0.01, zFar: 1000)
 
         // Set up lighting for the scene using the ambient intensity if provided
         var ambientIntensity: Float = 1.0
@@ -385,16 +406,17 @@ class Renderer {
         }
         
         let ambientLightColor: vector_float3 = vector3(0.5, 0.5, 0.5)
-        uniforms.pointee.ambientLightColor = ambientLightColor * ambientIntensity
+        //uniforms.pointee.ambientLightColor = ambientLightColor * ambientIntensity
+        uniforms.pointee.ambientLightColor = ambientLightColor
         
         var directionalLightDirection : vector_float3 = vector3(0.0, 0.0, -1.0)
         directionalLightDirection = simd_normalize(directionalLightDirection)
         uniforms.pointee.directionalLightDirection = directionalLightDirection
         
         let directionalLightColor: vector_float3 = vector3(0.6, 0.6, 0.6)
-        uniforms.pointee.directionalLightColor = directionalLightColor * ambientIntensity
-        
-        uniforms.pointee.materialShininess = 30
+        //uniforms.pointee.directionalLightColor = directionalLightColor * ambientIntensity
+        uniforms.pointee.directionalLightColor = directionalLightColor
+        uniforms.pointee.materialShininess = 0
     }
     
     func updateAnchors(frame: ARFrame) {
@@ -416,11 +438,17 @@ class Renderer {
             // 0th index is the face. Use the z distance for the backdrop
             if index == 0 {
                 
-                let behindDist : Float = 0.5
+                var behindDist : Float = 0.15
                 
                 // Calculate the eye-depth of the anchor
                 let uniforms = sharedUniformBufferAddress.assumingMemoryBound(to: SharedUniforms.self)
                 let viewMatrix = frame.camera.viewMatrix(for: .landscapeRight)
+                let upwardsCam = viewMatrix[1, 2]
+                let camHeight = viewMatrix[3, 1]
+                let headHeight = anchor.transform[3, 1]
+                if upwardsCam > 0.33 && camHeight - headHeight > 0.1 {
+                    behindDist = 1.0
+                }
                 let modelMatrix = anchor.transform
                 let modelViewMatrix = viewMatrix * modelMatrix
                 uniforms.pointee.cutoffDistance = -modelViewMatrix[3, 2] + behindDist
@@ -447,6 +475,7 @@ class Renderer {
             capturedImageTextureDepth = createTexture(fromPixelBuffer: depthBuffer, pixelFormat: .r32Float, planeIndex: 0)
             capturedImageTextureY = createTexture(fromPixelBuffer: pixelBuffer, pixelFormat:.r8Unorm, planeIndex:0)
             capturedImageTextureCbCr = createTexture(fromPixelBuffer: pixelBuffer, pixelFormat:.rg8Unorm, planeIndex:1)
+            
         }
         
         
@@ -509,7 +538,7 @@ class Renderer {
     }
     
     func drawAnchorGeometry(renderEncoder: MTLRenderCommandEncoder) {
-        guard anchorInstanceCount > 0 else {
+        guard anchorInstanceCount > 0, let textureColor = anchorTexture else {
             return
         }
         
@@ -521,6 +550,8 @@ class Renderer {
         //renderEncoder.setTriangleFillMode(.lines)
         renderEncoder.setRenderPipelineState(anchorPipelineState)
         renderEncoder.setDepthStencilState(anchorDepthState)
+        
+        renderEncoder.setFragmentTexture(anchorTexture, index: Int(kTextureIndexColor.rawValue))
         
         // Set any buffers fed into our render pipeline
         renderEncoder.setVertexBuffer(anchorUniformBuffer, offset: anchorUniformBufferOffset, index: Int(kBufferIndexInstanceUniforms.rawValue))
@@ -540,5 +571,31 @@ class Renderer {
         
         //renderEncoder.setTriangleFillMode(.fill)
         renderEncoder.popDebugGroup()
+    }
+    
+    func pixelBuffer (forImage image:CGImage) -> CVPixelBuffer? {
+    
+        let frameSize = CGSize(width: image.width, height: image.height)
+        
+        var pixelBuffer:CVPixelBuffer? = nil
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, Int(frameSize.width), Int(frameSize.height), kCVPixelFormatType_32BGRA , nil, &pixelBuffer)
+        
+        if status != kCVReturnSuccess {
+            return nil
+            
+        }
+        
+        CVPixelBufferLockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags.init(rawValue: 0))
+        let data = CVPixelBufferGetBaseAddress(pixelBuffer!)
+        let rgbColorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue)
+        let context = CGContext(data: data, width: Int(frameSize.width), height: Int(frameSize.height), bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer!), space: rgbColorSpace, bitmapInfo: bitmapInfo.rawValue)
+        
+        context?.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        
+        CVPixelBufferUnlockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0))
+        
+        return pixelBuffer
+        
     }
 }

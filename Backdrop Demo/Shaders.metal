@@ -80,6 +80,7 @@ typedef struct {
 typedef struct {
     float4 position [[position]];
     float4 color;
+    float2 texCoord [[attribute(kVertexAttributeTexcoord)]];
     half3  eyePosition;
     half3  normal;
 } ColorInOut;
@@ -110,6 +111,7 @@ vertex ColorInOut anchorGeometryVertexTransform(Vertex in [[stage_in]],
               : colorID == 3 ? float4(1.0, 0.5, 0.0, 1.0) // Bottom face
               : colorID == 4 ? float4(1.0, 1.0, 0.0, 1.0) // Back face
               : float4(1.0, 1.0, 1.0, 1.0); // Front face
+    //out.color = float4(0.0, 1.0, 0.0, 1.0);
     
     // Calculate the positon of our vertex in eye space
     out.eyePosition = half3((modelViewMatrix * position).xyz);
@@ -117,12 +119,14 @@ vertex ColorInOut anchorGeometryVertexTransform(Vertex in [[stage_in]],
     // Rotate our normals to world coordinates
     float4 normal = modelMatrix * float4(in.normal.x, in.normal.y, in.normal.z, 0.0f);
     out.normal = normalize(half3(normal.xyz));
+    out.texCoord = in.texCoord;
     
     return out;
 }
 
 // Anchor geometry fragment function
 fragment float4 anchorGeometryFragmentLighting(ColorInOut in [[stage_in]],
+                                               texture2d<float, access::sample> diffuseTexture [[ texture(kTextureIndexColor) ]],
                                                constant SharedUniforms &uniforms [[ buffer(kBufferIndexSharedUniforms) ]]) {
     
     float3 normal = float3(in.normal);
@@ -166,7 +170,11 @@ fragment float4 anchorGeometryFragmentLighting(ColorInOut in [[stage_in]],
     
     // We compute the final color by multiplying the sample from our color maps by the fragment's
     // lighting value
-    float3 color = in.color.rgb * lightContributions;
+    constexpr sampler colorSampler(mip_filter::linear,
+                                   mag_filter::linear,
+                                   min_filter::linear);
+    float4 diffColor = diffuseTexture.sample(colorSampler, in.texCoord);
+    float3 color = diffColor.rgb; //in.color.rgb; // * lightContributions;
     
     // We use the color we just computed and the alpha channel of our
     // colorMap for this fragment's alpha value
