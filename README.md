@@ -8,5 +8,6 @@ This example calculates depth to viewer's face, and uses it to remove the backgr
 The depth distance to include behind the user's face is a work in progress, but accurately setting this value is the key to successful  compositing. A value too large causes background artifacts from the camera to appear in front of the rendered scene, and a value too small removes the user's body. Currently the value is calculated based on the camera's height in relation to the face, as well as the camera's angle.
 
 Issues to be resolved/investigated further:
+
 - Border around head and body is noisy
 - Depth images are not recieved consistently
